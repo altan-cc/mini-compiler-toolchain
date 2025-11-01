@@ -208,6 +208,9 @@ void program() {
         exit_msg("Error: program must end with period");
     } else {
         advance(); // consume '.'
+        for (int i = 0; i < sym_count; i++) {
+            symbol_table[i].mark = 1;
+        }
     }
     emit(SYS, 0, 3); // halt
 }
@@ -336,6 +339,9 @@ void statement() {
         statement();
         code[jpcIdx].m = code_ind;
         return;
+    } else if (tok != fisym) {
+        exit_msg("Error: then must be followed by fi");
+        advance();
     } else if (tok == whilesym) {
         advance();
         int loopIdx = code_ind;
@@ -509,15 +515,6 @@ void read_token_file() {
             exit_msg("Error: Scanning error detected by lexer (skipsym present)");
         }
     }
-}
-
-void write_elf_or_error_and_exit_if_msg(const char *msg) {
-    FILE *elf = fopen(ELF_FILENAME, "w");
-    if (!elf) return;
-    fprintf(elf, "%s\n", msg);
-    fclose(elf);
-    printf("%s\n", msg);
-    exit(1);
 }
 
 void output() {
