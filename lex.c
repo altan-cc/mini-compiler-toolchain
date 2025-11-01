@@ -143,18 +143,21 @@ int main(int argc, char* argv[]) {
             buff[i] = '\0';
             if (i > MAX_IDENT_LEN) {
                 fprintf(out, "%d\n", skipsym);
-                while (isalnum(c)) c = fgetc(in);
+                while (isalnum(c)) {
+                    c = fgetc(in);
+                }
             }
-            if (c != EOF)
+            if (c != EOF) {
                 ungetc(c, in);
+            }
 
             int token = checkReserved(buff);
-            if (token)
+            if (token) {
                 fprintf(out, "%d\n", token);
-            else
+            } else {
                 fprintf(out, "%d %s\n", identsym, buff);
+            }
         }
-        /* number */
         else if (isdigit(c)) {
             char buff[32];
             int i = 0;
@@ -180,34 +183,38 @@ int main(int argc, char* argv[]) {
             }
             fprintf(out, "%d %s\n", numbersym, buff);
         }
-        /* two-char symbols */
+        // two-char symbols
         else if (c == ':') {
-            if ((c = fgetc(in)) == '=')
+            if ((c = fgetc(in)) == '=') {
                 fprintf(out, "%d\n", becomessym);
-            else {
+            } else {
                 fprintf(out, "%d\n", skipsym);
-                if (c != EOF) ungetc(c, in);
+                if (c != EOF) {
+                    ungetc(c, in);
+                }
             }
         } else if (c == '<') {
-            if ((c = fgetc(in)) == '>')
+            if ((c = fgetc(in)) == '>') {
                 fprintf(out, "%d\n", neqsym);
-            else if (c == '=')
+            } else if (c == '=') {
                 fprintf(out, "%d\n", leqsym);
-            else {
+            } else {
                 fprintf(out, "%d\n", lessym);
-                if (c != EOF)
+                if (c != EOF) {
                     ungetc(c, in);
+                }
             }
         } else if (c == '>') {
-            if ((c = fgetc(in)) == '=')
+            if ((c = fgetc(in)) == '=') {
                 fprintf(out, "%d\n", geqsym);
-            else {
+            } else {
                 fprintf(out, "%d\n", gtrsym);
-                if (c != EOF)
+                if (c != EOF) {
                     ungetc(c, in);
+                }
             }
         }
-        /* single-char symbols */
+        // single-char symbols
         else {
             switch (c) {
                 case '+': {
