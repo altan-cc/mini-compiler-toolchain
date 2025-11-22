@@ -189,6 +189,27 @@ void symbol_insert_var(const char *name, int addr) {
     s.name[11] = 0;
     symbol_table[sym_count++] = s;
 }
+
+void symbol_insert_proc(const char *name, int entry) {
+    if (symbol_lookup(name) != -1) {
+        printf("Error: symbol name has already been declared\n");
+        FILE *elf = fopen(ELF_FILENAME, "w");
+        if (elf) {
+            fprintf(elf, "Error: symbol name has already been declared\n");
+            fclose(elf);
+        }
+        exit(1);
+    }
+    if (sym_count >= MAX_SYMBOL_TABLE_SIZE) {
+        fprintf(stderr, "Symbol table overflow\n");
+        exit(1);
+    }
+    symbol s = {3, "", 0, 0, entry, 0};
+    strncpy(s.name, name, 11);
+    s.name[11] = 0;
+    symbol_table[sym_count++] = s;
+}
+
 // token operations
 int peek() {
     if (cur >= tok_count)
@@ -342,6 +363,21 @@ void statement() {
         expression();
         emit(STO, 0, symbol_table[idx].addr);
         return;
+    } else if (tok == callsym) {
+        advance(); // consume 'call'
+        if (peek() != identsym) {
+            exit_msg("Error: call statement may only target procedures");
+        }
+        char name[12];
+        strncpy(name, token_attr[cur], 11);
+        name[11] = 0;
+        int idx = symbol_lookup(name);
+        if (idx == -1 || symbol_table[idx].kind != 3) {
+            exit_msg("Error: call statement may only target procedures");
+        }
+        advance(); // consume id
+        emit(CAL, 0, symbol_table[idx].addr);
+        return;
     } else if (tok == beginsym) {
         advance(); // consume 'begin'
         statement();
@@ -364,8 +400,13 @@ void statement() {
         }
         advance(); // consume 'then'
         statement();
+        if (peek() != elsesym) {
+            exit_msg("Error: if statement must include else clause");
+        }
+        advance(); // consume 'else'
+        statement();
         if (peek() != fisym) {
-            exit_msg("Error: then must be followed by fi");
+            exit_msg("Error: else must be followed by fi");
         }
         advance(); // consume 'fi'
         code[jpcIdx].m = code_ind;
@@ -514,7 +555,7 @@ void factor() {
 void read_token_file() {
     FILE *f = fopen(TOKEN_FILENAME, "r");
     if (!f) {
-        fprintf(stderr, "Failed to open token file '%s'. If lex prints tokens to stdout, redirect: ./lex input.txt > tokens.txt\n", TOKEN_FILENAME);
+        fprintf(stderr, "Cannot open %s\n", TOKEN_FILENAME);
         exit(1);
     }
     tok_count = 0;
