@@ -126,6 +126,7 @@ int tokens[500];
 char token_attr[500][64];
 int tok_count = 0;
 int cur = 0; // index of current token
+int level = 0;
 
 const char *TOKEN_FILENAME = "tokens.txt";
 const char *ELF_FILENAME = "elf.txt";
@@ -142,7 +143,7 @@ void emit(int op, int l, int m) {
 }
 
 int symbol_lookup(const char *name) {
-    for (int i = 0; i < sym_count; i++) {
+    for (int i = sym_count - 1; i >= 0; i--) {
         if (symbol_table[i].mark == 0 && strcmp(symbol_table[i].name, name) == 0) {
             return i;
         }
@@ -151,60 +152,52 @@ int symbol_lookup(const char *name) {
 }
 
 void symbol_insert_const(const char *name, int value) {
-    if (symbol_lookup(name) != -1) {
-        printf("Error: symbol name has already been declared\n");
-        FILE *elf = fopen(ELF_FILENAME, "w");
-        if (elf) {
-            fprintf(elf, "Error: symbol name has already been declared\n");
-            fclose(elf);
+    for (int i = 0; i < sym_count; i++) {
+        if (symbol_table[i].mark == 0 && symbol_table[i].level == level && strcmp(symbol_table[i].name, name) == 0) {
+            fprintf(stderr,"Error: symbol name has already been declared");
+            exit(1);
         }
-        exit(1);
     }
+
     if (sym_count >= MAX_SYMBOL_TABLE_SIZE) {
         fprintf(stderr, "Symbol table overflow\n");
         exit(1);
     }
-    symbol s = {1, "", value, 0, 0, 0};
+    symbol s = {1, "", value, level, 0, 0};
     strncpy(s.name, name, 11);
     s.name[11] = 0;
     symbol_table[sym_count++] = s;
 }
 
 void symbol_insert_var(const char *name, int addr) {
-    if (symbol_lookup(name) != -1) {
-        printf("Error: symbol name has already been declared\n");
-        FILE *elf = fopen(ELF_FILENAME, "w");
-        if (elf) {
-            fprintf(elf, "Error: symbol name has already been declared\n");
-            fclose(elf);
+    for (int i = 0; i < sym_count; i++) {
+        if (symbol_table[i].mark == 0 && symbol_table[i].level == level && strcmp(symbol_table[i].name, name) == 0) {
+            fprintf(stderr, "Error: symbol name has already been declared");
+            exit(1);
         }
-        exit(1);
     }
     if (sym_count >= MAX_SYMBOL_TABLE_SIZE) {
         fprintf(stderr, "Symbol table overflow\n");
         exit(1);
     }
-    symbol s = {2, "", 0, 0, addr, 0};
+    symbol s = {2, "", 0, level, addr, 0};
     strncpy(s.name, name, 11);
     s.name[11] = 0;
     symbol_table[sym_count++] = s;
 }
 
 void symbol_insert_proc(const char *name, int entry) {
-    if (symbol_lookup(name) != -1) {
-        printf("Error: symbol name has already been declared\n");
-        FILE *elf = fopen(ELF_FILENAME, "w");
-        if (elf) {
-            fprintf(elf, "Error: symbol name has already been declared\n");
-            fclose(elf);
+    for (int i = 0; i < sym_count; i++) {
+        if (symbol_table[i].mark == 0 && symbol_table[i].level == level && strcmp(symbol_table[i].name, name) == 0) {
+            fprintf(stderr, "Error: symbol name has already been declared");
+            exit(1);
         }
-        exit(1);
     }
     if (sym_count >= MAX_SYMBOL_TABLE_SIZE) {
         fprintf(stderr, "Symbol table overflow\n");
         exit(1);
     }
-    symbol s = {3, "", 0, 0, entry, 0};
+    symbol s = {3, "", 0, level, entry, 0};
     strncpy(s.name, name, 11);
     s.name[11] = 0;
     symbol_table[sym_count++] = s;
@@ -244,6 +237,7 @@ void program();
 void block();
 int var_declaration();
 void const_declaration();
+void procedure_declaration();
 void statement();
 void condition();
 void expression();
@@ -264,10 +258,24 @@ void program() {
 }
 
 void block() {
+
     const_declaration();
     int numVars = var_declaration();
+    procedure_declaration();
+
+    if (level == 0) {
+        code[0].m = code_ind;
+    }
     emit(INC, 0, 3 + numVars);
     statement();
+
+    for (int i = sym_count - 1; i >= 0; i--) {
+        if (symbol_table[i].level == level) {
+            symbol_table[i].mark = 1;
+        } else if (symbol_table[i].level < level) {
+            break; 
+        }
+    }
 }
 
 void const_declaration() {
@@ -275,16 +283,13 @@ void const_declaration() {
         advance(); // consume 'const'
         while (1) {
             if (peek() != identsym) {
-                exit_msg("Error: const, var, and read keywords must be followed by identifier");
+                exit_msg("const, var, read, procedure, and call keywords must be followed by identifier");
             }
             advance(); // consume id
             // get name
             char name[12];
             strncpy(name, cur_attr(), 11);
             name[11] = 0;
-            if (symbol_lookup(name) != -1) {
-                exit_msg("Error: symbol name has already been declared");
-            }
             if (peek() != eqsym) {
                 exit_msg("Error: constants must be assigned with =");
             }
@@ -309,6 +314,38 @@ void const_declaration() {
     }
 }
 
+void procedure_declaration() {
+    while (peek() == procsym) {
+        advance(); 
+        if (peek() != identsym) exit_msg("const, var, read, procedure, and call keywords must be followed by identifier");
+        
+        char name[12];
+        strncpy(name, token_attr[cur], 11); 
+        name[11] = 0;
+        advance(); 
+
+        if (peek() != semicolonsym) exit_msg("Error: procedure declaration must be followed by a semicolon");
+        advance(); 
+
+        int jump_idx = code_ind;
+        emit(JMP, 0, 0);
+
+        symbol_insert_proc(name, code_ind);
+
+        level++; 
+        block(); 
+
+        level--; 
+
+        if (peek() != semicolonsym) exit_msg("Error: missing semicolon");
+        advance(); 
+
+        emit(OPR, 0, OPR_RET); 
+
+        code[jump_idx].m = code_ind;
+    }
+}
+
 int var_declaration() {
     int numVars = 0;
     if (peek() == varsym) {
@@ -322,9 +359,6 @@ int var_declaration() {
             strncpy(name, token_attr[cur], 11);
             name[11] = 0;
             advance(); // consume id
-            if (symbol_lookup(name) != -1) {
-                exit_msg("Error: symbol name has already been declared");
-            }
             // addresses allocation per sample, first var addr = 3, second = 4, etc
             int addr = 3 + numVars;
             symbol_insert_var(name, addr);
@@ -361,12 +395,12 @@ void statement() {
         }
         advance(); // consume ':='
         expression();
-        emit(STO, 0, symbol_table[idx].addr);
+        emit(STO, level - symbol_table[idx].level, symbol_table[idx].addr);
         return;
     } else if (tok == callsym) {
         advance(); // consume 'call'
         if (peek() != identsym) {
-            exit_msg("Error: call statement may only target procedures");
+            exit_msg("Error: const, var, read, procedure, and call keywords must be followed by identifier");
         }
         char name[12];
         strncpy(name, token_attr[cur], 11);
@@ -376,7 +410,7 @@ void statement() {
             exit_msg("Error: call statement may only target procedures");
         }
         advance(); // consume id
-        emit(CAL, 0, symbol_table[idx].addr);
+        emit(CAL, level - symbol_table[idx].level, symbol_table[idx].addr);
         return;
     } else if (tok == beginsym) {
         advance(); // consume 'begin'
@@ -400,11 +434,18 @@ void statement() {
         }
         advance(); // consume 'then'
         statement();
+
+        int jmpIdx = code_ind;
+        emit(JMP, 0, 0);
+        code[jpcIdx].m = code_ind;   
+
         if (peek() != elsesym) {
             exit_msg("Error: if statement must include else clause");
         }
         advance(); // consume 'else'
         statement();
+
+        code[jmpIdx].m = code_ind;
         if (peek() != fisym) {
             exit_msg("Error: else must be followed by fi");
         }
@@ -440,7 +481,7 @@ void statement() {
         }
         advance(); // consume id
         emit(SYS, 0, 2);
-        emit(STO, 0, symbol_table[idx].addr);
+        emit(STO, level - symbol_table[idx].level, symbol_table[idx].addr);
         return;
     } else if (tok == writesym) {
         advance();
@@ -535,7 +576,7 @@ void factor() {
         if (symbol_table[idx].kind == 1) {
             emit(LIT, 0, symbol_table[idx].val);
         } else {
-            emit(LOD, 0, symbol_table[idx].addr);
+            emit(LOD, level - symbol_table[idx].level, symbol_table[idx].addr);
         }
         advance();
     } else if (t == numbersym) {
@@ -647,7 +688,7 @@ int main() {
     read_token_file();
 
     // emit initial JMP 0 3 placeholder then code
-    emit(JMP, 0, 3);
+    emit(JMP, 0, 0);
 
     // start parsing
     program();
